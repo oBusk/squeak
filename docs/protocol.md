@@ -166,20 +166,33 @@ Arrives on input report `0xB6` without any request.
 ← e2 00 00 03 5a 01 01 05 00 …   cable, charging
 ```
 
+```
+← e2 01 00 ff ff ff ff …         dongle, link to the mouse lost (sleep, switched to cable, off)
+```
+
 | Offset | Meaning                                                              |
 | ------ | -------------------------------------------------------------------- |
-| 1–2    | `01 01` through the dongle, `00 00` over cable (connection mode?)    |
-| 3      | Charge state: `03` = charging, `00` = not charging                   |
-| 4      | Battery percent (plain value, no charging bit)                       |
-| 5–7    | `01 01 05`, unknown                                                  |
+| 1      | `01` through the dongle, `00` over cable                             |
+| 2      | `01` = mouse connected, `00` = dongle has lost the mouse             |
+| 3      | Charge state: `03` = charging, `00` = not charging (`ff` = no data)  |
+| 4      | Battery percent, plain value without charging bit (`ff` = no data)   |
+| 5–7    | `01 01 05`, unknown (`ff` = no data)                                 |
 
 When it's sent:
-- Through the dongle: on a charging-state change (seen when plugging and unplugging the charger).
-- Over cable while charging: roughly every 10 s (a few intervals were skipped), with the
-  percentage climbing (`5a` → `5d`).
-
-Not yet seen: whether it is pushed when the percentage drops during normal wireless use. If
-it is, squeak could wait for these instead of polling.
+- Through the dongle, while the mouse is awake: seen twice about a minute apart after handling
+  the mouse, including a drop (`5f` → `5e`). **Not confirmed as periodic**: in a later idle run
+  no pushes arrived. Unknown whether pushes follow usage, battery changes, or a timer.
+- Through the dongle: when the mouse reconnects or **wakes from sleep** (one to three pushes
+  within a few seconds), and when the link is lost (the `ff` variant): on switching to the
+  cable, and when the mouse **goes to sleep** after ~10 idle minutes (matches sleep time `0a`
+  in the `06` reply). Observed over two sleep/wake cycles.
+- The open device handle kept receiving pushes after the PC hibernated and resumed (one sample).
+- Through the dongle: on a charging-state change. Seen on plugging in and unplugging an external
+  charger once, but another time plugging in produced no push. Not reliable on its own; the
+  next periodic push carries the new state anyway.
+- Over cable while charging: roughly every 10 s, with the percentage climbing (`5a` → `5d`).
+- While the mouse sleeps, nothing is pushed, and a `06 00` poll through the dongle gets no
+  reply either.
 
 Through the dongle, the launcher reacts to each `e2` by sending `b2` on report 0.
 
@@ -249,9 +262,19 @@ in response to pushed `e2` notifications, so it appears to rely on those for bat
 2. Write output report `0xB3` with data `06 00` + zero padding (64 bytes including report ID).
 3. Read input reports until one with ID `0xB4` and data starting with `06` arrives.
 4. Battery % = `data[19] & 0x7F` (buffer byte 20 on Win32); charging = `data[19] >> 7`.
-5. No reply within a timeout means no mouse is reachable on that path (e.g. a dongle whose
-   mouse is on the cable or switched off).
-6. Optionally also handle unsolicited `0xB6` `e2` reports, which carry charge state and percent.
+5. No reply within a timeout means no mouse is reachable on that path right now: asleep,
+   switched off, or on the cable instead of the dongle.
+6. After that, listen for unsolicited `0xB6` `e2` reports. Whether a slow fallback poll is
+   also needed depends on how regularly these arrive during normal use (still to be measured).
+
+## Open questions
+
+Test with the launcher closed; it may influence what the mouse pushes.
+
+- Is an `e2` pushed reliably when an external charger is plugged in (with the mouse awake)?
+- Is an `e2` pushed when the percentage drops during normal use (e.g. 93 → 92)?
+- Near empty: more frequent pushes? Lowest reported value before shutdown?
+- Bluetooth mode: not examined at all.
 
 ## Other command families in the launcher
 

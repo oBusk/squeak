@@ -12,3 +12,4 @@ panic = "abort"     # no stack-unwinding machinery
 strip = true        # remove symbols from the exe
 
 [dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Devices_DeviceAndDriverInstallation", "Win32_Devices_HumanInterfaceDevice", "Win32_Storage_FileSystem", "Win32_System_IO", "Win32_System_Threading", "Win32_System_SystemInformation", "Win32_Security"] }
